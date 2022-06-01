@@ -8,7 +8,11 @@
         <outputRelativeToContentRoot value="true" />
         <module name="Cloud-java" />
         <module name="CloudJavaClient" />
+        <module name="ServerCloud" />
       </profile>
     </annotationProcessing>
+    <bytecodeTargetLevel>
+      <module name="CloudServer" target="18" />
+    </bytecodeTargetLevel>
   </component>
 </project>
