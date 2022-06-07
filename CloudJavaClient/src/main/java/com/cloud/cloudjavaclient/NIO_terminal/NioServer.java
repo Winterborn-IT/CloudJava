@@ -10,7 +10,9 @@ import java.nio.channels.ServerSocketChannel;
 import java.nio.channels.SocketChannel;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
+import java.nio.file.NoSuchFileException;
 import java.nio.file.Path;
+import java.util.Arrays;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Set;
@@ -21,7 +23,7 @@ public class NioServer {
 
     private ServerSocketChannel server;
     private Selector selector;
-    private Path dir;
+    private String dir;
 
     public NioServer() throws IOException {
         server = ServerSocketChannel.open();
@@ -30,7 +32,7 @@ public class NioServer {
         server.bind(new InetSocketAddress(8189));
         server.configureBlocking(false);
         server.register(selector, SelectionKey.OP_ACCEPT);
-        dir = Path.of("C:/Users/Winter/Documents");
+        dir = System.getProperty("user.home");
 
     }
 
@@ -58,7 +60,8 @@ public class NioServer {
         ByteBuffer buffer = ByteBuffer.allocate(1024);
         SocketChannel channel = (SocketChannel) key.channel();
         StringBuilder sb = new StringBuilder();
-        Path localPath = dir;
+        String[] files = new File(dir).list();
+
         while (channel.isOpen()) {
             int read = channel.read(buffer);
             if (read < 0) {
@@ -75,32 +78,47 @@ public class NioServer {
             buffer.clear();
         }
 
-        if (sb.toString().startsWith("ls")) {
-            Set<String> files = listFiles(String.valueOf(localPath));
+        // Определение команды
+        String[] com = sb.toString().replaceAll("[\r\n]+$", "").split(" ", 2);
+        String caseCommand = com[0];
+
+        if (caseCommand.equals("ls")) {
             for (String file : files) {
                 sb.append(file + "\n");
             }
         }
-        if (sb.toString().startsWith("cat")) {
+
+        if (caseCommand.equals("cat")) {
             String s = sb.toString().replaceAll("[\r\n]+$", "");
             String[] command = s.split(" ", 2);
-
-            Path file = Path.of(String.valueOf(localPath), command[1]);
-            List<String> stringList = Files.readAllLines(file);
-            for (String s1 : stringList) {
-                sb.append(s1).append("\n");
+            try {
+                Path file = Path.of(String.valueOf(dir), command[1]);
+                List<String> stringList = Files.readAllLines(file);
+                for (String s1 : stringList) {
+                    sb.append(s1).append("\n");
+                }
+            } catch (IOException e) {
+                for (SelectionKey selectedKey : selector.keys()) {
+                    if (selectedKey.isValid() && selectedKey.channel() instanceof SocketChannel sc) {
+                        sc.write(ByteBuffer.wrap("File not found\n".getBytes(StandardCharsets.UTF_8)));
+                    }
+                }
+                sb.setLength(0);
             }
         }
-        if (sb.toString().startsWith("cd")) {
+        if (caseCommand.equals("cd")) {
             String str = sb.toString().replaceAll("[\r\n]+$", "");
             String[] command = str.split(" ", 2);
-
-            localPath = Path.of(String.valueOf(dir), command[1]);
-
-
+            // Поиск имени директории из списка
+            if (Arrays.asList(files).contains(command[1]) || command[1].equals("..")) {
+                dir = String.valueOf(Path.of(dir).resolve(command[1]).normalize());
+            } else {
+                sb.append("Directory doesn't exist\n");
+            }
 
         }
 
+        sb.append(dir);
         sb.append("-> ");
 
         byte[] message = sb.toString().getBytes(StandardCharsets.UTF_8);
@@ -117,13 +135,7 @@ public class NioServer {
         channel.configureBlocking(false);
         channel.register(selector, SelectionKey.OP_READ);
         channel.write(ByteBuffer.wrap("Welcome in NIO terminal\n->".getBytes(StandardCharsets.UTF_8)));
-    }
 
-    public Set<String> listFiles(String dir) {
-        return Stream.of(new File(dir).listFiles())
-                .filter(file -> !file.isDirectory())
-                .map(File::getName)
-                .collect(Collectors.toSet());
     }
 
 }
